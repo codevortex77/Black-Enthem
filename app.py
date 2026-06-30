@@ -5,7 +5,6 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# 1. FIX FOR CREDIT AT THE END: 
 # Prevent Flask from sorting JSON keys alphabetically so "Credit" stays at the bottom
 app.config['JSON_SORT_KEYS'] = False
 if hasattr(app, 'json'):
@@ -15,7 +14,7 @@ if hasattr(app, 'json'):
 cache = {}
 CACHE_DURATION = 300  # 5 minutes
 
-# 2. API VALIDITY (18 Days from June 30, 2026)
+# API VALIDITY (18 Days from June 30, 2026)
 EXPIRY_DATE = datetime(2026, 7, 18)
 
 def get_cached_response(cache_key):
@@ -41,8 +40,7 @@ def clean_response(data, top_level=True):
             else:
                 cleaned[key] = clean_response(value, False)
 
-        # Add Credit only to the root object. Since sorting is disabled, 
-        # inserting it last guarantees it shows up at the bottom of the JSON.
+        # Add Credit only to the root object.
         if top_level:
             cleaned["Credit"] = "@RichUniversal"
 
@@ -65,7 +63,7 @@ def api_handler():
             "Credit": "@RichUniversal"
         }), 403
 
-    # --- 3. KEY ENFORCEMENT ---
+    # --- KEY ENFORCEMENT ---
     provided_key = request.args.get('key', '')
     if provided_key.lower() != 'blackenthem':
         return jsonify({
@@ -73,7 +71,7 @@ def api_handler():
             "Credit": "@RichUniversal"
         }), 401
 
-    # Extract parameters (supporting both 'query' and 'term' based on your example URL)
+    # Extract parameters (supporting both 'query' and 'term')
     query_type = request.args.get('type', 'num') 
     query_value = request.args.get('query') or request.args.get('term', '')
     
@@ -90,11 +88,16 @@ def api_handler():
     
     try:
         # Request to original API
-        # We pass 'swayam' to the backend to keep it working, while users use 'Blackenthem' on the frontend
         backend_key = "swayam"
         original_url = f"https://rootx-osint.in/?type={query_type}&key={backend_key}&query={query_value}"
         
-        response = requests.get(original_url, timeout=10)
+        # Add headers to prevent 403 blocks from upstream security
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        # Increased timeout to 20 seconds to prevent early drops
+        response = requests.get(original_url, headers=headers, timeout=20)
         
         if response.status_code == 200:
             data = response.json()
@@ -107,11 +110,22 @@ def api_handler():
             
             return jsonify(cleaned_data)
         else:
-            return jsonify({"error": "Failed to fetch data from upstream", "Credit": "@RichUniversal"}), 500
+            return jsonify({
+                "error": "Failed to fetch data from upstream", 
+                "upstream_status_code": response.status_code,
+                "Credit": "@RichUniversal"
+            }), 500
             
+    # Specific timeout catch
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "error": "Upstream API took too long to respond (Timeout Limit Exceeded)",
+            "Credit": "@RichUniversal"
+        }), 504
+        
     except Exception as e:
         return jsonify({
-            "error": str(e),
+            "error": f"Internal Script Error: {str(e)}",
             "Credit": "@RichUniversal"
         }), 500
 
