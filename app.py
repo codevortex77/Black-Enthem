@@ -71,15 +71,19 @@ def api_handler():
             "Credit": "@RichUniversal"
         }), 401
 
-    # Extract parameters (supporting both 'query' and 'term')
-    query_type = request.args.get('type', 'num') 
-    query_value = request.args.get('query') or request.args.get('term', '')
+    # --- PARAMETER TRANSLATION FIX ---
+    # Get what the user requested on Vercel
+    frontend_type = request.args.get('type', 'num') 
+    frontend_term = request.args.get('query') or request.args.get('term', '')
     
-    if not query_value:
+    if not frontend_term:
         return jsonify({"error": "Query or term parameter required", "Credit": "@RichUniversal"}), 400
+        
+    # Translate frontend 'mobile' to backend 'num' so rootx-osint accepts it
+    backend_type = 'num' if frontend_type == 'mobile' else frontend_type
     
     # Create cache key
-    cache_key = f"{query_type}:blackenthem:{query_value}"
+    cache_key = f"{backend_type}:blackenthem:{frontend_term}"
     
     # Check cache
     cached_response = get_cached_response(cache_key)
@@ -87,16 +91,16 @@ def api_handler():
         return jsonify(cached_response)
     
     try:
-        # Request to original API
+        # Request to original API with translated parameters
         backend_key = "swayam"
-        original_url = f"https://rootx-osint.in/?type={query_type}&key={backend_key}&query={query_value}"
+        original_url = f"https://rootx-osint.in/?type={backend_type}&key={backend_key}&query={frontend_term}"
         
-        # Add headers to prevent 403 blocks from upstream security
+        # Add headers to prevent blocks from upstream security
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         
-        # Increased timeout to 20 seconds to prevent early drops
+        # 20-second timeout
         response = requests.get(original_url, headers=headers, timeout=20)
         
         if response.status_code == 200:
@@ -137,7 +141,3 @@ def health_check():
         "Credit": "@RichUniversal",
         "usage": "/api?key=Blackenthem&type=mobile&term=9758126124"
     })
-
-# Vercel handler
-def handler(request, context):
-    return app(request.environ, start_response)
